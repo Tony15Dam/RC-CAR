@@ -64,6 +64,7 @@ char* webPage =
 
 "button:hover{background-color:#90EE90}"
 ".button2{background-color: #ff0000;}"
+".button3{background-color: #0000FF;}"
 
 ".button:active{background-color: #90EE90;"
 "box-shadow : 0 5px #666;"
@@ -73,11 +74,13 @@ char* webPage =
 "</style>"
 "</head>"
 "<body> <h1><center>RC CONTROL</center></h1>"
+"<p><center><a href='/manual'><button class='button'>MANUAL MODE</button></a></center></p>"
 "<p><center><a href='/fwd/'><button class='button'>FORWARD</button></a></center></p>"
 "<p><center><a href='/rleft/'><button class='button'>LEFT</button></a>"
 "<a href='/rright/'><button class='button'>RIGHT</button></a></center></p>"
 "<p><center><a href='/bck'><button class='button'>BACKWARDS</button></a></center></p>"
 "<p><center><a href='/stop'><button class='button button2'>STOP</button></a></center></p>"
+"<p><center><a href='/Auto'><button class='button button3'>AUTOMATIC MODE</button></a></center></p>"
 
 "</body> </html>";
 
@@ -180,6 +183,8 @@ void TCP_connect(){
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
 
+    bool manual = true;
+
     if(sock < 0){
         ESP_LOGE(TAG, "Failed to create a socket.");
         return;
@@ -221,29 +226,48 @@ void TCP_connect(){
 
             gate = read(cfd, readBuffer, sizeof(readBuffer));
 
-            if(strstr(readBuffer, "/stop") > 0){
+            if(manual == true){
+                if(strstr(readBuffer, "/stop") > 0){
 
-                uart_data = "Stop";
+                    uart_data = "Stop";
+                }
+
+                else if(strstr(readBuffer, "/fwd") > 0){  
+
+                    uart_data = "Forw";
+                }
+
+                else if(strstr(readBuffer, "/bck") > 0){
+
+                    uart_data = "Back";
+                }
+
+                else if(strstr(readBuffer, "/rleft") > 0){
+
+                    uart_data = "Left";
+                }
+
+                else if(strstr(readBuffer, "/rright") > 0){
+
+                    uart_data = "Righ";
+                }
             }
 
-            else if(strstr(readBuffer, "/fwd") > 0){  
+            if(strstr(readBuffer, "/Auto") > 0){
 
-                uart_data = "Forw";
+                //Set gpio high for a few ms so pico can read the wave change
+                gpio_set_level(2, HIGH); 
+                vTaskDelay(1/portTICK_PERIOD_MS);
+                gpio_set_level(2, LOW);
+                manual = false;
             }
 
-            else if(strstr(readBuffer, "/bck") > 0){
+            else if(strstr(readBuffer, "/manual") > 0){
 
-                uart_data = "Back";
-            }
-
-            else if(strstr(readBuffer, "/rleft") > 0){
-
-                uart_data = "Left";
-            }
-
-            else if(strstr(readBuffer, "/rright") > 0){
-
-                uart_data = "Righ";
+                gpio_set_level(4, HIGH);
+                vTaskDelay(1/portTICK_PERIOD_MS);
+                gpio_set_level(4, LOW);
+                manual = true;
             }
 
             ESP_LOGI(TAG, uart_data);
@@ -253,8 +277,8 @@ void TCP_connect(){
             gate = 0;
         }
         //Close socket and add delay to allow client time to load the page
-        close(cfd);
         vTaskDelay(20/portTICK_PERIOD_MS);
+        close(cfd);
     }
     close(sock);
     free(uart_data);
@@ -264,6 +288,10 @@ void app_main()
 {
     //Initialize flash memory
     ESP_ERROR_CHECK(nvs_flash_init());
+
+    //Initialize gpios to be used as interrupts
+    gpio_set_direction(2, GPIO_MODE_OUTPUT);
+    gpio_set_direction(4, GPIO_MODE_OUTPUT);
 
     //Initialize UART drivers
     uart_param_config(UART_NUM_0, &uart_config);
